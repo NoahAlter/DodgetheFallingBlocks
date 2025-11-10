@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Dodge the Falling Blocks</title>
+<title>Dodge the Blocks – Power Edition</title>
 <style>
     body {
         margin: 0;
@@ -17,8 +17,8 @@
         display: none;
         margin: auto;
     }
-    #menu, #gameOverScreen {
-        margin-top: 80px;
+    #menu, #gameOverScreen, #shop {
+        margin-top: 60px;
     }
     button {
         padding: 12px 25px;
@@ -28,10 +28,7 @@
         color: white;
         font-size: 20px;
         cursor: pointer;
-        margin-top: 15px;
-    }
-    button:hover {
-        background: #43a047;
+        margin: 10px;
     }
     #scoreDisplay {
         position: absolute;
@@ -39,55 +36,84 @@
         left: 10px;
         font-size: 22px;
     }
-    #leaderboard {
-        margin-top: 20px;
-        font-size: 18px;
+    .skin {
+        width: 80px;
+        height: 80px;
+        background: #333;
+        border-radius: 10px;
+        display: inline-block;
+        cursor: pointer;
+        margin: 10px;
+        border: 3px solid transparent;
+    }
+    .owned {
+        border: 3px solid gold;
     }
 </style>
 </head>
 <body>
 
 <div id="menu">
-    <h1>Dodge the Falling Blocks</h1>
-    <p>Use Arrow Keys to Move Left & Right</p>
+    <h1>Dodge the Blocks</h1>
     <button onclick="startGame()">Start Game</button>
+    <button onclick="openShop()">Shop</button>
 </div>
 
 <canvas id="gameCanvas" width="500" height="600"></canvas>
 <div id="scoreDisplay"></div>
 
+<!-- SHOP MENU -->
+<div id="shop" style="display:none;">
+    <h1>Skins Shop</h1>
+    <p>Points: <span id="pointsDisplay"></span></p>
+    <div id="skins"></div>
+    <button onclick="closeShop()">Back</button>
+</div>
+
+<!-- GAME OVER -->
 <div id="gameOverScreen" style="display:none;">
     <h1>Game Over</h1>
     <p id="finalScore"></p>
     <button onclick="startGame()">Play Again</button>
-    
-    <h2>Leaderboard</h2>
-    <div id="leaderboard"></div>
+    <button onclick="openShop()">Shop</button>
 </div>
 
 <script>
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
-let player, blocks, score, level, speed, gameOver;
+
+let player, blocks, score, level, speed, gameOver, moveSpeed;
+let powerUps = [];
+let activeSkin = localStorage.getItem("activeSkin") || "skin1.png";
+let ownedSkins = JSON.parse(localStorage.getItem("ownedSkins")) || ["skin1.png"];
+let points = parseInt(localStorage.getItem("points")) || 0;
+
+// Load image
+let playerImg = new Image();
+playerImg.src = activeSkin;
 
 document.addEventListener("keydown", event => {
-    if (event.key === "ArrowLeft" && player.x > 0) player.x -= 30;
-    if (event.key === "ArrowRight" && player.x < 450) player.x += 30;
+    if (event.key === "ArrowLeft" && player.x > 0) player.x -= moveSpeed;
+    if (event.key === "ArrowRight" && player.x < 450) player.x += moveSpeed;
 });
 
 function startGame() {
     document.getElementById("menu").style.display = "none";
+    document.getElementById("shop").style.display = "none";
     document.getElementById("gameOverScreen").style.display = "none";
     document.getElementById("gameCanvas").style.display = "block";
 
     player = { x: 225, y: 550, width: 50, height: 50 };
     blocks = [];
+    powerUps = [];
     score = 0;
     level = 1;
     speed = 4;
+    moveSpeed = 30;
     gameOver = false;
 
     setInterval(spawnBlock, 900);
+    setInterval(spawnPowerUp, 6000);
     updateGame();
 }
 
@@ -98,36 +124,41 @@ function spawnBlock() {
     blocks.push({ x, y: -size, size });
 }
 
+function spawnPowerUp() {
+    if (gameOver) return;
+    let types = ["slow", "invincible", "speed"];
+    let type = types[Math.floor(Math.random() * types.length)];
+    let x = Math.random() * 450;
+    powerUps.push({ x, y: -20, type });
+}
+
 function updateGame() {
     if (gameOver) return;
 
     ctx.clearRect(0, 0, 500, 600);
 
-    // Player
-    ctx.fillStyle = "cyan";
-    ctx.fillRect(player.x, player.y, player.width, player.height);
+    // Draw player sprite
+    ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
 
-    // Blocks
+    // Draw blocks
     ctx.fillStyle = "red";
     blocks.forEach((block, index) => {
         block.y += speed;
-
         ctx.fillRect(block.x, block.y, block.size, block.size);
 
         // Collision
-        if (
-            block.y + block.size >= player.y &&
+        if (!invincible && block.y + block.size >= player.y &&
             block.x < player.x + player.width &&
-            block.x + block.size > player.x
-        ) {
+            block.x + block.size > player.x) {
             endGame();
         }
 
         if (block.y > 600) {
             blocks.splice(index, 1);
             score++;
+            points++;
+            savePoints();
 
-            // Level system: every 10 points increases difficulty
             if (score % 10 === 0) {
                 level++;
                 speed += 1;
@@ -135,10 +166,36 @@ function updateGame() {
         }
     });
 
+    // Draw power-ups
+    powerUps.forEach((p, i) => {
+        p.y += 4;
+        ctx.fillStyle = (p.type === "slow") ? "blue" :
+                        (p.type === "invincible") ? "gold" : "green";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 12, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (p.y + 12 >= player.y &&
+            p.x > player.x && p.x < player.x + player.width) {
+            activatePowerUp(p.type);
+            powerUps.splice(i, 1);
+        }
+    });
+
     document.getElementById("scoreDisplay").innerText = 
-        `Score: ${score}   |   Level: ${level}`;
+        `Score: ${score} | Level: ${level} | Points: ${points}`;
 
     requestAnimationFrame(updateGame);
+}
+
+let invincible = false;
+function activatePowerUp(type) {
+    if (type === "slow") speed = Math.max(2, speed - 2);
+    if (type === "speed") moveSpeed = 50;
+    if (type === "invincible") {
+        invincible = true;
+        setTimeout(() => invincible = false, 3000);
+    }
 }
 
 function endGame() {
@@ -146,26 +203,69 @@ function endGame() {
     document.getElementById("gameCanvas").style.display = "none";
     document.getElementById("gameOverScreen").style.display = "block";
     document.getElementById("finalScore").innerText = "Final Score: " + score;
-
-    saveToLeaderboard(score);
-    showLeaderboard();
 }
 
-function saveToLeaderboard(score) {
-    let scores = JSON.parse(localStorage.getItem("leaderboard")) || [];
-    scores.push(score);
-    scores.sort((a, b) => b - a);
-    scores = scores.slice(0, 5); // keep top 5
-    localStorage.setItem("leaderboard", JSON.stringify(scores));
+function openShop() {
+    document.getElementById("menu").style.display = "none";
+    document.getElementById("gameOverScreen").style.display = "none";
+    document.getElementById("shop").style.display = "block";
+    document.getElementById("pointsDisplay").innerText = points;
+    loadShop();
 }
 
-function showLeaderboard() {
-    let scores = JSON.parse(localStorage.getItem("leaderboard")) || [];
-    let output = "";
-    scores.forEach((s, i) => {
-        output += `${i+1}. ${s}<br>`;
+function closeShop() {
+    document.getElementById("menu").style.display = "block";
+    document.getElementById("shop").style.display = "none";
+}
+
+function loadShop() {
+    const skinsDiv = document.getElementById("skins");
+    skinsDiv.innerHTML = "";
+
+    const storeSkins = [
+        { file: "skin1.png", cost: 0 },
+        { file: "skin2.png", cost: 30 },
+        { file: "skin3.png", cost: 50 }
+    ];
+
+    storeSkins.forEach(s => {
+        let div = document.createElement("div");
+        div.className = "skin";
+        div.style.backgroundImage = `url(${s.file})`;
+        div.style.backgroundSize = "cover";
+
+        if (ownedSkins.includes(s.file)) {
+            div.classList.add("owned");
+            div.onclick = () => selectSkin(s.file);
+        } else if (points >= s.cost) {
+            div.onclick = () => buySkin(s.file, s.cost);
+        } else {
+            div.style.opacity = "0.3";
+        }
+
+        skinsDiv.appendChild(div);
     });
-    document.getElementById("leaderboard").innerHTML = output;
+}
+
+function buySkin(file, cost) {
+    points -= cost;
+    ownedSkins.push(file);
+    savePoints();
+    saveSkins();
+    loadShop();
+}
+
+function selectSkin(file) {
+    activeSkin = file;
+    localStorage.setItem("activeSkin", file);
+    playerImg.src = file;
+}
+
+function savePoints() {
+    localStorage.setItem("points", points);
+}
+function saveSkins() {
+    localStorage.setItem("ownedSkins", JSON.stringify(ownedSkins));
 }
 </script>
 
