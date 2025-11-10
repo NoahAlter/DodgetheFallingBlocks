@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dodge the Falling Blocks</title>
+<style>
+    body {
+        margin: 0;
+        background: #111;
+        overflow: hidden;
+        font-family: Arial, sans-serif;
+        color: white;
+        text-align: center;
+    }
+    #gameCanvas {
+        background: #1e1e1e;
+        display: none;
+        margin: auto;
+    }
+    #menu, #gameOverScreen {
+        margin-top: 80px;
+    }
+    button {
+        padding: 12px 25px;
+        background: #4CAF50;
+        border: none;
+        border-radius: 6px;
+        color: white;
+        font-size: 20px;
+        cursor: pointer;
+        margin-top: 15px;
+    }
+    button:hover {
+        background: #43a047;
+    }
+    #scoreDisplay {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        font-size: 22px;
+    }
+    #leaderboard {
+        margin-top: 20px;
+        font-size: 18px;
+    }
+</style>
+</head>
+<body>
+
+<div id="menu">
+    <h1>Dodge the Falling Blocks</h1>
+    <p>Use Arrow Keys to Move Left & Right</p>
+    <button onclick="startGame()">Start Game</button>
+</div>
+
+<canvas id="gameCanvas" width="500" height="600"></canvas>
+<div id="scoreDisplay"></div>
+
+<div id="gameOverScreen" style="display:none;">
+    <h1>Game Over</h1>
+    <p id="finalScore"></p>
+    <button onclick="startGame()">Play Again</button>
+    
+    <h2>Leaderboard</h2>
+    <div id="leaderboard"></div>
+</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+let player, blocks, score, level, speed, gameOver;
+
+document.addEventListener("keydown", event => {
+    if (event.key === "ArrowLeft" && player.x > 0) player.x -= 30;
+    if (event.key === "ArrowRight" && player.x < 450) player.x += 30;
+});
+
+function startGame() {
+    document.getElementById("menu").style.display = "none";
+    document.getElementById("gameOverScreen").style.display = "none";
+    document.getElementById("gameCanvas").style.display = "block";
+
+    player = { x: 225, y: 550, width: 50, height: 50 };
+    blocks = [];
+    score = 0;
+    level = 1;
+    speed = 4;
+    gameOver = false;
+
+    setInterval(spawnBlock, 900);
+    updateGame();
+}
+
+function spawnBlock() {
+    if (gameOver) return;
+    let size = 40;
+    let x = Math.random() * (500 - size);
+    blocks.push({ x, y: -size, size });
+}
+
+function updateGame() {
+    if (gameOver) return;
+
+    ctx.clearRect(0, 0, 500, 600);
+
+    // Player
+    ctx.fillStyle = "cyan";
+    ctx.fillRect(player.x, player.y, player.width, player.height);
+
+    // Blocks
+    ctx.fillStyle = "red";
+    blocks.forEach((block, index) => {
+        block.y += speed;
+
+        ctx.fillRect(block.x, block.y, block.size, block.size);
+
+        // Collision
+        if (
+            block.y + block.size >= player.y &&
+            block.x < player.x + player.width &&
+            block.x + block.size > player.x
+        ) {
+            endGame();
+        }
+
+        if (block.y > 600) {
+            blocks.splice(index, 1);
+            score++;
+
+            // Level system: every 10 points increases difficulty
+            if (score % 10 === 0) {
+                level++;
+                speed += 1;
+            }
+        }
+    });
+
+    document.getElementById("scoreDisplay").innerText = 
+        `Score: ${score}   |   Level: ${level}`;
+
+    requestAnimationFrame(updateGame);
+}
+
+function endGame() {
+    gameOver = true;
+    document.getElementById("gameCanvas").style.display = "none";
+    document.getElementById("gameOverScreen").style.display = "block";
+    document.getElementById("finalScore").innerText = "Final Score: " + score;
+
+    saveToLeaderboard(score);
+    showLeaderboard();
+}
+
+function saveToLeaderboard(score) {
+    let scores = JSON.parse(localStorage.getItem("leaderboard")) || [];
+    scores.push(score);
+    scores.sort((a, b) => b - a);
+    scores = scores.slice(0, 5); // keep top 5
+    localStorage.setItem("leaderboard", JSON.stringify(scores));
+}
+
+function showLeaderboard() {
+    let scores = JSON.parse(localStorage.getItem("leaderboard")) || [];
+    let output = "";
+    scores.forEach((s, i) => {
+        output += `${i+1}. ${s}<br>`;
+    });
+    document.getElementById("leaderboard").innerHTML = output;
+}
+</script>
+
+</body>
+</html>
